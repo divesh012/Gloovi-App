@@ -37,8 +37,8 @@ app.secret_key = "your_secret_key"
 # razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 import razorpay
 
-RAZORPAY_KEY_ID = "rzp_live_RvRvdzislvBCca"
-RAZORPAY_KEY_SECRET = "l42VvFwX79uK0ZxlgZ56wdi7"
+RAZORPAY_KEY_ID = "rzp_live_T336CKhpUUNDx2"
+RAZORPAY_KEY_SECRET = "s2xRVEE7468mQUD7pWK55bFV"
 
 razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 razorpay_client.set_app_details({"title": "Gloora Salon Booking", "version": "1.0"})
