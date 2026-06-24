@@ -1462,10 +1462,7 @@ def payment(salon_id):
 @app.route("/payment-success", methods=["POST"])
 def payment_success():
 
-    print("STEP 1: Route Hit")
-
     if "user_id" not in session:
-        print("STEP 1 FAILED")
         flash("Please login first!", "error")
         return redirect(url_for("login_page"))
 
@@ -1473,57 +1470,68 @@ def payment_success():
     order_id = request.form.get("razorpay_order_id")
     signature = request.form.get("razorpay_signature")
 
-    print("STEP 2: Form Data Received")
+    if not payment_id or not order_id or not signature:
+        flash("Payment failed!", "error")
+        return redirect(url_for("show_salons"))
 
+    # ---------- VERIFY ----------
     try:
         razorpay_client.utility.verify_payment_signature({
             "razorpay_order_id": order_id,
             "razorpay_payment_id": payment_id,
             "razorpay_signature": signature
         })
-        print("STEP 3: Signature Verified")
     except Exception as e:
-        print("SIGNATURE ERROR:", e)
-        return "Signature Failed"
+        print("Payment verification failed:", e)
+        flash("Payment verification failed!", "error")
+        return redirect(url_for("show_salons"))
+
+    booking = session.get("pending_booking")
+
+    if not booking:
+        flash("Booking session expired!", "error")
+        return redirect(url_for("show_salons"))
 
     try:
         with get_db_connection() as conn:
 
-            print("STEP 4: DB Connected")
-
+            # ---------- INSERT BOOKING (THIS WAS MISSING) ----------
             conn.execute("""
-                UPDATE slot_data
-                SET payment_status='paid'
-                WHERE id = (
-                    SELECT id
-                    FROM slot_data
-                    WHERE user_id=?
-                    ORDER BY id DESC
-                    LIMIT 1
-                )
-            """, (session["user_id"],))
-
-            print("STEP 5: Payment Updated")
-
-            booking = conn.execute("""
-                SELECT *
-                FROM slot_data
-                WHERE user_id=?
-                ORDER BY id DESC
-                LIMIT 1
-            """, (session["user_id"],)).fetchone()
-
-            print("STEP 6: Booking Found =", booking is not None)
+                INSERT INTO slot_data (
+                    user_id,
+                    username,
+                    salon_id,
+                    slot_date,
+                    slot_time,
+                    start_time,
+                    end_time,
+                    selected_services,
+                    total_price,
+                    payment_status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                session["user_id"],
+                session["username"],
+                booking["salon_id"],
+                booking["slot_date"],
+                booking["slot_time"],
+                booking["start_time"],
+                booking["end_time"],
+                ",".join(booking["selected_services"]),
+                booking["service_total"],
+                "paid"
+            ))
 
             conn.commit()
 
-        print("STEP 7: Commit Done")
+        # clear session
+        session.pop("pending_booking", None)
+
+        flash("Payment successful! Slot booked.", "success")
 
     except Exception as e:
-        print("DATABASE ERROR:", e)
-        return f"DB ERROR: {e}"
-
-    print("STEP 8: Redirecting")
+        print("DB ERROR:", e)
+        flash("Something went wrong after payment!", "error")
 
     return redirect(url_for("show_salons"))
 
