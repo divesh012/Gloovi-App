@@ -30,10 +30,10 @@ import razorpay
 app = Flask(__name__)
 app.secret_key = "your_secret_key"
 
-ADMIN_USERNAME = "#"
+ADMIN_USERNAME = "divesh05"
 
-ADMIN_EMAIL="#"
-ADMIN_PASSWORD="#"
+ADMIN_EMAIL="diveshkuthe8556@gmail.com"
+ADMIN_PASSWORD="Divesh@123"
 
 print("ENV EMAIL:", ADMIN_EMAIL)
 print("ENV PASSWORD:", ADMIN_PASSWORD)
