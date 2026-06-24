@@ -32,7 +32,7 @@ app.secret_key = "your_secret_key"
 
 ADMIN_USERNAME = "#"
 
-ADMIN_EMAIL="#@gmail.com"
+ADMIN_EMAIL="#"
 ADMIN_PASSWORD="#"
 
 print("ENV EMAIL:", ADMIN_EMAIL)
