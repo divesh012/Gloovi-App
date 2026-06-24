@@ -30,10 +30,10 @@ import razorpay
 app = Flask(__name__)
 app.secret_key = "your_secret_key"
 
-ADMIN_USERNAME = "divesh05"
+ADMIN_USERNAME = "#"
 
-ADMIN_EMAIL="diveshkuthe8556@gmail.com"
-ADMIN_PASSWORD="Divesh@123"
+ADMIN_EMAIL="#"
+ADMIN_PASSWORD="#"
 
 print("ENV EMAIL:", ADMIN_EMAIL)
 print("ENV PASSWORD:", ADMIN_PASSWORD)
@@ -47,10 +47,6 @@ import razorpay
 RAZORPAY_KEY_ID = "#"
 RAZORPAY_KEY_SECRET = "#"
 
-=======
-RAZORPAY_KEY_ID = "rzp_live_T336CKhpUUNDx2"
-RAZORPAY_KEY_SECRET = "s2xRVEE7468mQUD7pWK55bFV"
->>>>>>> 7be6449 (Add Razorpay payment debugging and verification improvements)
 razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 razorpay_client.set_app_details({"title": "Gloora Salon Booking", "version": "1.0"})
 
