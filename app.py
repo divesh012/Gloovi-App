@@ -1041,6 +1041,7 @@ def toggle_verify(salon_id):
 
 # -------------------- WORKER PAGE -------------------- #
 
+# -------------------- WORKER PAGE -------------------- #
 @app.route("/salon/<int:salon_id>/workers")
 def worker_toggle_page(salon_id):
 
@@ -1056,7 +1057,7 @@ def worker_toggle_page(salon_id):
     with get_db_connection() as conn:
         cur = conn.cursor()
 
-        # Get salon details
+        # ---------------- Get salon ---------------- #
         cur.execute("""
             SELECT *
             FROM salons_data
@@ -1069,7 +1070,7 @@ def worker_toggle_page(salon_id):
             flash("Salon not found!", "error")
             return redirect(url_for("show_salons"))
 
-        # Show only pending paid bookings
+        # ---------------- Pending Bookings ---------------- #
         cur.execute("""
             SELECT *
             FROM slot_data
@@ -1085,7 +1086,23 @@ def worker_toggle_page(salon_id):
 
         pending_bookings = cur.fetchall()
 
-    # Generate workers list
+        # ---------------- Confirmed Bookings ---------------- #
+        cur.execute("""
+            SELECT *
+            FROM slot_data
+            WHERE salon_id=%s
+              AND payment_status=%s
+              AND booking_status=%s
+            ORDER BY slot_date ASC, slot_time ASC
+        """, (
+            salon_id,
+            "paid",
+            "Confirmed"
+        ))
+
+        confirmed_bookings = cur.fetchall()
+
+    # ---------------- Workers ---------------- #
     workers = [
         {
             "id": i + 1,
@@ -1098,104 +1115,9 @@ def worker_toggle_page(salon_id):
         "worker_toggle.html",
         salon=salon,
         workers=workers,
-        pending_bookings=pending_bookings
+        pending_bookings=pending_bookings,
+        confirmed_bookings=confirmed_bookings
     )
-# -------------------- ACCEPT BOOKING -------------------- #
-@app.route("/accept_booking/<int:slot_id>", methods=["POST"])
-def accept_booking(slot_id):
-
-    if "username" not in session:
-        flash("Login required", "error")
-        return redirect(url_for("login_page"))
-
-    with get_db_connection() as conn:
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT salon_id, slot_date, slot_time
-            FROM slot_data
-            WHERE id=%s
-        """, (slot_id,))
-
-        booking = cur.fetchone()
-
-        if not booking:
-            flash("Booking not found.", "error")
-            return redirect(request.referrer)
-
-        salon_id = booking["salon_id"]
-        slot_date = booking["slot_date"]
-        slot_time = booking["slot_time"]
-
-        cur.execute("""
-            SELECT worker_count
-            FROM salons_data
-            WHERE id=%s
-        """, (salon_id,))
-
-        salon = cur.fetchone()
-
-        worker_count = salon["worker_count"]
-
-        cur.execute("""
-            SELECT COUNT(*) AS total
-            FROM slot_data
-            WHERE salon_id=%s
-              AND slot_date=%s
-              AND slot_time=%s
-              AND booking_status=%s
-        """, (
-            salon_id,
-            slot_date,
-            slot_time,
-            "Confirmed"
-        ))
-
-        confirmed = cur.fetchone()["total"]
-
-        if confirmed >= worker_count:
-            flash("No workers available for this slot.", "error")
-            return redirect(request.referrer)
-
-        cur.execute("""
-            UPDATE slot_data
-            SET booking_status=%s
-            WHERE id=%s
-        """, (
-            "Confirmed",
-            slot_id
-        ))
-
-        conn.commit()
-
-    flash("Booking confirmed successfully!", "success")
-    return redirect(request.referrer)
-
-
-# -------------------- REJECT BOOKING -------------------- #
-@app.route("/reject_booking/<int:slot_id>", methods=["POST"])
-def reject_booking(slot_id):
-
-    if "username" not in session:
-        flash("Login required", "error")
-        return redirect(url_for("login_page"))
-
-    with get_db_connection() as conn:
-        cur = conn.cursor()
-
-        cur.execute("""
-            UPDATE slot_data
-            SET booking_status=%s
-            WHERE id=%s
-        """, (
-            "Rejected",
-            slot_id
-        ))
-
-        conn.commit()
-
-    flash("Booking rejected!", "success")
-    return redirect(request.referrer)
 
 # check 6
 # -------------------- WORKER PASSKEY VERIFICATION PAGE (GET) -------------------- #

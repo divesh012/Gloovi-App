@@ -91,6 +91,43 @@
 
 <p>No Pending Bookings.</p>
 
+<hr>
+
+<h2>Accepted Bookings</h2>
+
+{% if confirmed_bookings %}
+
+    {% for booking in confirmed_bookings %}
+
+    <div class="booking-card">
+
+        <p><strong>Customer:</strong> {{ booking.username }}</p>
+
+        <p><strong>Date:</strong> {{ booking.slot_date }}</p>
+
+        <p><strong>Time:</strong> {{ booking.slot_time }}</p>
+
+        <p><strong>Services:</strong> {{ booking.selected_services }}</p>
+
+        <p><strong>Total Price:</strong> ₹{{ booking.total_price }}</p>
+
+        <button
+            style="background:green;color:white;padding:8px 18px;border:none;border-radius:6px;">
+            Confirmed
+        </button>
+
+    </div>
+
+    <hr>
+
+    {% endfor %}
+
+{% else %}
+
+<p>No Accepted Bookings.</p>
+
+{% endif %}
+
 {% endif %}
 
 
