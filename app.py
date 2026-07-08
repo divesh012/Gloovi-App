@@ -93,11 +93,35 @@ BACKUP_DIR = os.path.join(BASE_DIR, "backup")
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
 # -------------------- DATABASE CONNECTION -------------------- #
+# def get_db_connection():
+#     conn = sqlite3.connect(DB_PATH)
+#     conn.row_factory = sqlite3.Row
+#     conn.execute("PRAGMA foreign_keys = ON;")
+#     return conn
+
+#------------USED PG ADMIN----------#
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+print("DATABASE_URL =", DATABASE_URL)
+
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
+    return psycopg2.connect(
+        DATABASE_URL,
+        cursor_factory=RealDictCursor
+    )
+try:
+    conn = get_db_connection()
+    print("✅ PostgreSQL Connected")
+    conn.close()
+except Exception as e:
+    print("❌ PostgreSQL Error:", e)
+
 
 # -------------------- BACKUP FUNCTIONS -------------------- #
 def backup_database():
@@ -142,15 +166,60 @@ def send_sms(mobile, message):
     return result
 
 
-# -------------------- INITIALIZE TABLES -------------------- #
-def init_all_databases():
+#This is salon On off by default offf 
+
+from datetime import date
+
+def reset_salons_daily():
+    today = str(date.today())
+
     with get_db_connection() as conn:
         cur = conn.cursor()
+
+        # Get last reset date
+        cur.execute(
+            "SELECT value FROM app_settings WHERE key=%s",
+            ("last_reset_date",)
+        )
+        row = cur.fetchone()
+
+        last_reset = row["value"] if row else ""
+
+        # Reset only once per day
+        if last_reset != today:
+
+            cur.execute("UPDATE salons_data SET status='OFF'")
+
+            cur.execute(
+                "UPDATE app_settings SET value=%s WHERE key=%s",
+                (today, "last_reset_date")
+            )
+
+            conn.commit()
+# -------------------- INITIALIZE TABLES -------------------- #
+
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
+# -------------------- CONNECTION -------------------- #
+def get_db_connection():
+    return psycopg2.connect(
+        DATABASE_URL,
+        cursor_factory=RealDictCursor
+    )
+
+# -------------------- INIT DATABASE -------------------- #
+def init_all_databases():
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        print("🔧 Creating PostgreSQL tables...")
 
         # USERS
         cur.execute("""
         CREATE TABLE IF NOT EXISTS users_data (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             username TEXT UNIQUE NOT NULL,
             email TEXT UNIQUE NOT NULL,
             mobile TEXT UNIQUE,
@@ -162,19 +231,19 @@ def init_all_databases():
         # SALONS
         cur.execute("""
         CREATE TABLE IF NOT EXISTS salons_data (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             salon_name TEXT NOT NULL,
             address TEXT,
             city TEXT NOT NULL,
             state TEXT NOT NULL,
-            lat REAL,
-            lng REAL,
+            lat DOUBLE PRECISION,
+            lng DOUBLE PRECISION,
             contact TEXT NOT NULL,
             status TEXT DEFAULT 'ON',
             owner_username TEXT,
             owner_id INTEGER,
             email TEXT,
-            price REAL DEFAULT 0,
+            price DOUBLE PRECISION DEFAULT 0,
             pass_key TEXT NOT NULL,
             rating_total INTEGER DEFAULT 0,
             rating_count INTEGER DEFAULT 0,
@@ -183,106 +252,70 @@ def init_all_databases():
         )
         """)
 
-        # SERVICES (MASTER)
+        # SERVICES
         cur.execute("""
         CREATE TABLE IF NOT EXISTS services (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             service_name TEXT UNIQUE NOT NULL
         )
         """)
 
-        # SALON ↔ SERVICES
+        # SALON SERVICES
         cur.execute("""
         CREATE TABLE IF NOT EXISTS salon_services (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    salon_id INTEGER NOT NULL,
-    service_id INTEGER NOT NULL,
-    price REAL,
-
-    FOREIGN KEY (salon_id)
-        REFERENCES salons_data(id)
-        ON DELETE CASCADE,
-
-    FOREIGN KEY (service_id)
-        REFERENCES services(id)
-        ON DELETE CASCADE
-)
+            id SERIAL PRIMARY KEY,
+            salon_id INTEGER,
+            service_id INTEGER,
+            price DOUBLE PRECISION,
+            FOREIGN KEY (salon_id) REFERENCES salons_data(id) ON DELETE CASCADE,
+            FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE
+        )
         """)
-        #Slot Reminders
+
+        # SLOT REMINDERS
         cur.execute("""
-                    CREATE TABLE IF NOT EXISTS slot_reminders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    salon_id INTEGER NOT NULL,
-    slot_datetime TEXT NOT NULL,
-    reminder_time TEXT NOT NULL,
-    sent INTEGER DEFAULT 0
-                    )
+        CREATE TABLE IF NOT EXISTS slot_reminders (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            salon_id INTEGER NOT NULL,
+            slot_datetime TEXT NOT NULL,
+            reminder_time TEXT NOT NULL,
+            sent INTEGER DEFAULT 0
+        )
         """)
 
-        # SLOT BOOKINGS
+        # SLOT DATA
         cur.execute("""
         CREATE TABLE IF NOT EXISTS slot_data (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    username TEXT,
-    salon_id INTEGER,
-    service_id INTEGER,
-    slot_date TEXT,
-    slot_time TEXT,
-    start_time TEXT,
-    end_time TEXT,
-    selected_services TEXT DEFAULT '',
-    total_price REAL DEFAULT 0,
-    payment_status TEXT DEFAULT 'pending',
-
-    FOREIGN KEY (user_id)
-        REFERENCES users_data(id)
-        ON DELETE CASCADE,
-
-    FOREIGN KEY (salon_id)
-        REFERENCES salons_data(id)
-        ON DELETE CASCADE,
-
-    FOREIGN KEY (service_id)
-        REFERENCES services(id)
-        ON DELETE CASCADE
-    )
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER,
+            username TEXT,
+            salon_id INTEGER,
+            service_id INTEGER,
+            slot_date TEXT,
+            slot_time TEXT,
+            start_time TEXT,
+            end_time TEXT,
+            selected_services TEXT DEFAULT '',
+            total_price DOUBLE PRECISION DEFAULT 0,
+            payment_status TEXT DEFAULT 'pending',
+            FOREIGN KEY (user_id) REFERENCES users_data(id) ON DELETE CASCADE,
+            FOREIGN KEY (salon_id) REFERENCES salons_data(id) ON DELETE CASCADE,
+            FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE
+        )
         """)
+
         conn.commit()
-        print("✔ All tables created successfully in database.db")
+        cur.close()
+        conn.close()
 
-# -------------------- UTILITY -------------------- #
-def get_salon_services(conn, salon_id):
-    rows = conn.execute("""
-        SELECT 
-            s.id AS service_id,
-            s.service_name,
-            ss.price
-        FROM salon_services ss
-        JOIN services s ON ss.service_id = s.id
-        WHERE ss.salon_id = ?
-    """, (salon_id,)).fetchall()
+        print("✅ ALL POSTGRESQL TABLES CREATED SUCCESSFULLY")
 
-    services = []
-    for r in rows:
-        services.append({
-            "id": r["service_id"],
-            "name": r["service_name"],
-            "price": r["price"]
-        })
+    except Exception as e:
+        print("❌ DATABASE INIT ERROR:", e)
 
-    return services
-
-# -------------------- RUN INIT ONLY IF DB DOESN'T EXIST -------------------- #
-if not os.path.exists(DB_PATH):
-    init_all_databases()
-
-# -------------------- BACKUP DATABASE AFTER INIT -------------------- #
-backup_database()
-cleanup_old_backups(max_backups=5)
-
-
+# with app.app_context():
+#     init_all_databases()
 # -------------------- HELPERS -------------------- #
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXT
@@ -376,14 +409,16 @@ def login_page():
 
         conn = get_db_connection()
 
-        user = conn.execute(
+        cur = conn.cursor()
+        cur = conn.execute(
             """
             SELECT *
             FROM users_data
-            WHERE username=? AND email=?
+            WHERE username=%s AND email=%s
             """,
             (username, email)
-        ).fetchone()
+        )
+        user = cur.fetchone()
 
         conn.close()
 
@@ -403,7 +438,7 @@ def login_page():
                 "success"
             )
 
-            return redirect(url_for("help_page"))
+            return redirect(url_for("male"))
 
         flash("Invalid credentials!", "error")
 
@@ -427,22 +462,30 @@ def admin_dashboard():
         return redirect(url_for("male", login=1))
 
     conn = get_db_connection()
+    cur = conn.cursor()
 
-    users = conn.execute(
+    cur.execute(
         "SELECT * FROM users_data"
-    ).fetchall()
+    )
+    users = cur.fetchall()
 
-    salons = conn.execute(
+
+    cur.execute(
         "SELECT * FROM salons_data"
-    ).fetchall()
+    )
+    salons = cur.fetchall()
 
-    services = conn.execute(
+
+    cur.execute(
         "SELECT * FROM services"
-    ).fetchall()
+    )
+    services = cur.fetchall()
 
-    bookings = conn.execute(
+
+    cur.execute(
         "SELECT * FROM slot_data"
-    ).fetchall()
+    )
+    bookings = cur.fetchall()
 
     conn.close()
 
@@ -469,8 +512,10 @@ def delete_user(id):
 
     conn = get_db_connection()
 
-    conn.execute(
-        "DELETE FROM users_data WHERE id=?",
+    cur = conn.cursor()
+
+    cur.execute(
+        "DELETE FROM users_data WHERE id=%s",
         (id,)
     )
 
@@ -484,8 +529,10 @@ def delete_salon(id):
 
     conn = get_db_connection()
 
-    conn.execute(
-        "DELETE FROM salons_data WHERE id=?",
+    cur = conn.cursor()
+
+    cur.execute(
+        "DELETE FROM salons_data WHERE id=%s",
         (id,)
     )
 
@@ -500,8 +547,10 @@ def delete_service(id):
 
     conn = get_db_connection()
 
-    conn.execute(
-        "DELETE FROM services WHERE id=?",
+    cur = conn.cursor
+
+    cur.execute(
+        "DELETE FROM services WHERE id=%s",
         (id,)
     )
 
@@ -515,8 +564,10 @@ def delete_booking(id):
 
     conn = get_db_connection()
 
+    cur = conn.cursor()
+
     conn.execute(
-        "DELETE FROM slot_data WHERE id=?",
+        "DELETE FROM slot_data WHERE id=%s",
         (id,)
     )
 
@@ -554,7 +605,7 @@ def handle_auth(action, gender_page):
             cur.execute("""
                 INSERT INTO users_data
                 (username, email, mobile, password, gender)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s)
             """, (username, email, mobile, hashed_pw, gender))
 
             conn.commit()
@@ -563,8 +614,8 @@ def handle_auth(action, gender_page):
                 "Registration successful! Please login.",
                 "success"
             )
-
-        except sqlite3.IntegrityError:
+            from psycopg2 import IntegrityError
+        except IntegrityError:
             flash(
                 "Username, Email, or Mobile already exists!",
                 "error"
@@ -597,7 +648,7 @@ def handle_auth(action, gender_page):
             """
             SELECT *
             FROM users_data
-            WHERE username=? AND email=?
+            WHERE username=%s AND email=%s
             """,
             (username, email)
         )
@@ -622,7 +673,7 @@ def handle_auth(action, gender_page):
 
             conn.close()
 
-            return redirect(url_for("help_page"))
+            return redirect(url_for("male"))
 
         flash("Invalid credentials!", "error")
 
@@ -665,10 +716,12 @@ def forgot_password_male():
         mobile = request.form.get("mobile")
 
         conn = get_db_connection()
-        user = conn.execute(
-            "SELECT * FROM users_data WHERE mobile=? AND gender='male'",
+        cur = conn.cursor()
+        cur = conn.execute(
+            "SELECT * FROM users_data WHERE mobile=%s AND gender='male'",
             (mobile,)
-        ).fetchone()
+        )
+        user = cur.fetchone()
         conn.close()
 
         if not user:
@@ -704,10 +757,12 @@ def forgot_password_female():
             return redirect(url_for("forgot_password_female"))
 
         conn = get_db_connection()
-        user = conn.execute(
-            "SELECT id FROM users_data WHERE mobile=? AND gender='female'",
+        cur = conn.cursor()
+        cur = conn.execute(
+            "SELECT id FROM users_data WHERE mobile=%s AND gender='female'",
             (mobile,)
-        ).fetchone()
+        )
+        user = cur.fetchone()
         conn.close()
 
         if not user:
@@ -763,8 +818,9 @@ def reset_password():
         hashed = generate_password_hash(new_password)
 
         conn = get_db_connection()
-        conn.execute(
-            "UPDATE users_data SET password=? WHERE mobile=?",
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE users_data SET password=%s WHERE mobile=%s",
             (hashed, mobile)
         )
         conn.commit()
@@ -791,6 +847,7 @@ def uploaded_file(filename):
 @app.route("/register_salon", methods=["GET", "POST"])
 def register_salon():
     if request.method == "POST":
+
         salon_name = request.form.get("name", "").strip()
         address = request.form.get("address", "").strip()
         city = request.form.get("city", "").strip()
@@ -798,7 +855,6 @@ def register_salon():
         contact = request.form.get("contact", "").strip()
         pass_key = request.form.get("pass_key", "").strip()
 
-        # Worker count
         try:
             worker_count = int(request.form.get("worker_count", 1))
             if worker_count < 1:
@@ -808,7 +864,7 @@ def register_salon():
 
         image_file = request.files.get("image")
 
-        # ---------------- SERVICES ----------------
+        # SERVICES
         service_names = request.form.getlist("service_name[]")
         service_prices = request.form.getlist("service_price[]")
 
@@ -828,7 +884,7 @@ def register_salon():
 
             valid_services.append((s_name, price_val))
 
-        # ---------------- VALIDATION ----------------
+        # VALIDATION
         if not all([salon_name, city, state, contact, pass_key]):
             flash("All fields marked with * are mandatory!", "error")
             return render_template("register_salon.html")
@@ -838,19 +894,18 @@ def register_salon():
             return render_template("register_salon.html")
 
         hashed_pass_key = generate_password_hash(pass_key)
-
-        # ---------------- SAVE IMAGE ----------------
         image_path = save_image(image_file)
 
-        # ---------------- INSERT SALON ----------------
         with get_db_connection() as conn:
             cur = conn.cursor()
 
+            # INSERT SALON
             cur.execute("""
                 INSERT INTO salons_data
                 (salon_name, owner_username, owner_id, email, contact,
                  address, city, state, image, pass_key, worker_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
             """, (
                 salon_name,
                 session.get("username", ""),
@@ -864,30 +919,33 @@ def register_salon():
                 hashed_pass_key,
                 worker_count
             ))
-            conn.commit()
 
-            salon_id = cur.lastrowid
+            salon_id = cur.fetchone()["id"]
 
-            # ---------------- INSERT SERVICES ----------------
+            # INSERT SERVICES
             for s_name, price_val in valid_services:
-                service = conn.execute(
-                    "SELECT id FROM services WHERE service_name=?",
+
+                cur.execute(
+                    "SELECT id FROM services WHERE service_name=%s",
                     (s_name,)
-                ).fetchone()
+                )
+                service = cur.fetchone()
 
                 if service:
                     service_id = service["id"]
                 else:
-                    cur.execute(
-                        "INSERT INTO services (service_name) VALUES (?)",
-                        (s_name,)
-                    )
-                    conn.commit()
-                    service_id = cur.lastrowid
+                    cur.execute("""
+                        INSERT INTO services (service_name)
+                        VALUES (%s)
+                        RETURNING id
+                    """, (s_name,))
 
+                    service_id = cur.fetchone()["id"]
+
+                # MAP TABLE
                 cur.execute("""
                     INSERT INTO salon_services (salon_id, service_id, price)
-                    VALUES (?, ?, ?)
+                    VALUES (%s, %s, %s)
                 """, (salon_id, service_id, price_val))
 
             conn.commit()
@@ -898,37 +956,66 @@ def register_salon():
     return render_template("register_salon.html")
 
 # -------------------- SHOW SALONS -------------------- #
+
+def get_salon_services(conn, salon_id):
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT 
+            s.id AS service_id,
+            s.service_name,
+            ss.price
+        FROM salon_services ss
+        JOIN services s ON ss.service_id = s.id
+        WHERE ss.salon_id = %s
+    """, (salon_id,))
+
+    rows = cur.fetchall()
+
+    services = []
+    for r in rows:
+        services.append({
+            "id": r["service_id"],
+            "name": r["service_name"],
+            "price": r["price"]
+        })
+
+    return services
+
+
 @app.route("/salons")
 def show_salons():
+
     search = request.args.get("search", "").strip().lower()
 
     with get_db_connection() as conn:
+        cur = conn.cursor()
+
         if search:
-            salons = conn.execute(
-            """
-            SELECT * FROM salons_data
-            WHERE LOWER(salon_name) LIKE ? OR LOWER(address) LIKE ?
-            """,
-            (f"%{search}%", f"%{search}%")
-        ).fetchall()
+            cur.execute("""
+                SELECT * FROM salons_data
+                WHERE LOWER(salon_name) LIKE %s
+                OR LOWER(address) LIKE %s
+            """, (f"%{search}%", f"%{search}%"))
         else:
-            salons = conn.execute("SELECT * FROM salons_data").fetchall()
+            cur.execute("SELECT * FROM salons_data")
 
-        salon_list = []
+        salons = cur.fetchall()
 
+    salon_list = []
+
+    with get_db_connection() as conn:
         for s in salons:
             d = dict(s)
 
-            # services
             d["services"] = get_salon_services(conn, s["id"]) or []
 
-            # rating
-            if s["rating_count"] and s["rating_count"] > 0:
-                d["avg_rating"] = round(s["rating_total"] / s["rating_count"], 1)
-            else:
-                d["avg_rating"] = 0
+            d["avg_rating"] = (
+                round(s["rating_total"] / s["rating_count"], 1)
+                if s["rating_count"] else 0
+            )
 
-            d["image"] = s["image"]
+            d["image"] = s["image"]   # FIXED
+
             salon_list.append(d)
 
     return render_template(
@@ -943,6 +1030,7 @@ def show_salons():
 # -------------------- RECOMMEND (accepts lat & lon and shows nearest first) -------------------- #
 @app.route("/recommend", methods=["GET"])
 def recommend():
+
     lat = request.args.get("lat", type=float)
     lon = request.args.get("lon", type=float)
     category = request.args.get("category", default=None, type=str)
@@ -951,37 +1039,37 @@ def recommend():
         flash("Location not provided.", "error")
         return redirect(url_for("show_salons"))
 
-    # reuse show logic but force sorting by distance and optional category filter
     with get_db_connection() as conn:
+        cur = conn.cursor()
+
         if category:
-            salons = conn.execute(
-                "SELECT * FROM salons WHERE LOWER(services) LIKE ? OR LOWER(name) LIKE ?",
-                (f"%{category.lower()}%", f"%{category.lower()}%"),
-            ).fetchall()
-            if not salons:
-                salons = conn.execute("SELECT * FROM salons_data").fetchall()
+            cur.execute("""
+                SELECT * FROM salons_data
+                WHERE LOWER(salon_name) LIKE %s
+            """, (f"%{category.lower()}%",))
         else:
-            salons = conn.execute("SELECT * FROM salons_data").fetchall()
+            cur.execute("SELECT * FROM salons_data")
+
+        salons = cur.fetchall()
 
     salons_list = []
+
     for s in salons:
         d = dict(s)
-        d["image_path"] = s["image_path"]
+        d["image"] = s["image"]   # FIXED
+
         try:
-            d["distance_km"] = round(haversine(lat, lon, s["lat"], s["lng"]), 2) if s["lat"] and s["lng"] else None
-        except Exception:
+            d["distance_km"] = round(
+                haversine(lat, lon, s["lat"], s["lng"]), 2
+            ) if s["lat"] and s["lng"] else None
+        except:
             d["distance_km"] = None
+
         salons_list.append(d)
 
     salons_list.sort(key=lambda x: (x["distance_km"] is None, x["distance_km"]))
 
-    return render_template(
-        "show_salon.html",
-        salons=salons_list,
-        search_query="",
-        username=session.get("username"),
-    )
-
+    return render_template("show_salon.html", salons=salons_list)
 # -------------------- RATE SALON -------------------- #
 @app.route("/rate/<int:salon_id>", methods=["POST"])
 def rate_salon(salon_id):
@@ -996,14 +1084,14 @@ def rate_salon(salon_id):
 
     with get_db_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT rating_total, rating_count FROM salons_data WHERE id=?", (salon_id,))
+        cur.execute("SELECT rating_total, rating_count FROM salons_data WHERE id=%s", (salon_id,))
         salon = cur.fetchone()
         if not salon:
             flash("Salon not found!", "error")
             return redirect(url_for("show_salons"))
         new_total = salon["rating_total"] + rating
         new_count = salon["rating_count"] + 1
-        cur.execute("UPDATE salons_data SET rating_total=?, rating_count=? WHERE id=?", (new_total, new_count, salon_id))
+        cur.execute("UPDATE salons_data SET rating_total=%s, rating_count=%s WHERE id=%s", (new_total, new_count, salon_id))
         conn.commit()
 
     flash("Thank you for rating!", "success")
@@ -1011,25 +1099,38 @@ def rate_salon(salon_id):
 # -------------------- SALON TOGGLE -------------------- #
 @app.route("/toggle_verify/<int:salon_id>", methods=["POST"])
 def toggle_verify(salon_id):
-    # If already verified in session, skip modal
-    if session.get("verified_salon_toggle_id") == salon_id:
-        flash("Salon already verified!", "info")
-        return redirect(url_for("show_salons"))
 
     entered_key = request.form.get("pass_key")
-    with get_db_connection() as conn:
-        salon = conn.execute("SELECT pass_key, status FROM salons_data WHERE id=?",
-                             (salon_id,)).fetchone()
 
-    if not salon or not check_password_hash(salon["pass_key"], entered_key):
-        flash("Wrong Passkey!", "error")
+    if not entered_key:
+        flash("Please enter the passkey.", "error")
         return redirect(url_for("show_salons"))
 
-    session["verified_salon_toggle_id"] = salon_id
-
-    new_status = "OFF" if salon["status"] == "ON" else "ON"
     with get_db_connection() as conn:
-        conn.execute("UPDATE salons_data SET status=? WHERE id=?", (new_status, salon_id))
+        cur = conn.cursor()
+
+        cur.execute(
+            "SELECT pass_key, status FROM salons_data WHERE id=%s",
+            (salon_id,)
+        )
+
+        salon = cur.fetchone()
+
+        if not salon:
+            flash("Salon not found!", "error")
+            return redirect(url_for("show_salons"))
+
+        if not check_password_hash(salon["pass_key"], entered_key):
+            flash("Wrong Passkey!", "error")
+            return redirect(url_for("show_salons"))
+
+        new_status = "OFF" if salon["status"] == "ON" else "ON"
+
+        cur.execute(
+            "UPDATE salons_data SET status=%s WHERE id=%s",
+            (new_status, salon_id)
+        )
+
         conn.commit()
 
     flash(f"Salon turned {new_status}", "success")
@@ -1043,30 +1144,144 @@ def worker_toggle_page(salon_id):
         flash("Login required", "error")
         return redirect(url_for("login_page"))
 
-    # Already verified for worker update?
+    # Passkey verification
     if session.get("verified_worker_salon_id") != salon_id:
         flash("Passkey verification required", "error")
         return redirect(url_for("verify_worker_page_get", salon_id=salon_id))
 
     with get_db_connection() as conn:
-        salon = conn.execute(
-            "SELECT * FROM salons_data WHERE id=?", (salon_id,)
-        ).fetchone()
+        cur = conn.cursor()
 
-    if not salon:
-        flash("Salon not found!", "error")
-        return redirect(url_for("show_salons"))
+        # Get salon details
+        cur.execute(
+            "SELECT * FROM salons_data WHERE id=%s",
+            (salon_id,)
+        )
+        salon = cur.fetchone()
 
-    # Generate workers list based on worker_count
+        if not salon:
+            flash("Salon not found!", "error")
+            return redirect(url_for("show_salons"))
+
+        # Get all pending bookings for this salon
+        cur.execute("""
+            SELECT *
+            FROM slot_data
+            WHERE salon_id=%s
+              AND payment_status='paid'
+              AND booking_status='Pending'
+            ORDER BY slot_date, slot_time
+        """, (salon_id,))
+
+        pending_bookings = cur.fetchall()
+
+    # Generate workers list
     workers = [
-        {"id": i + 1, "status": "ON" if i < salon["worker_count"] else "OFF"}
+        {
+            "id": i + 1,
+            "status": "ON" if i < salon["worker_count"] else "OFF"
+        }
         for i in range(salon["worker_count"])
     ]
 
-    return render_template("worker_toggle.html", salon=salon, workers=workers)
+    return render_template(
+        "worker_toggle.html",
+        salon=salon,
+        workers=workers,
+        pending_bookings=pending_bookings
+    )
 
 
+@app.route("/accept_booking/<int:slot_id>", methods=["POST"])
+def accept_booking(slot_id):
 
+    if "username" not in session:
+        flash("Login required", "error")
+        return redirect(url_for("login_page"))
+
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+
+        # Get booking details
+        cur.execute("""
+            SELECT salon_id, slot_date, slot_time
+            FROM slot_data
+            WHERE id=%s
+        """, (slot_id,))
+
+        booking = cur.fetchone()
+
+        if not booking:
+            flash("Booking not found.", "error")
+            return redirect(request.referrer)
+
+        salon_id = booking["salon_id"]
+        slot_date = booking["slot_date"]
+        slot_time = booking["slot_time"]
+
+        # Get available workers
+        cur.execute("""
+            SELECT worker_count
+            FROM salons_data
+            WHERE id=%s
+        """, (salon_id,))
+
+        salon = cur.fetchone()
+
+        worker_count = salon["worker_count"]
+
+        # Count confirmed bookings for the SAME date & time
+        cur.execute("""
+            SELECT COUNT(*) AS total
+            FROM slot_data
+            WHERE salon_id=%s
+              AND slot_date=%s
+              AND slot_time=%s
+              AND booking_status='Confirmed'
+        """, (salon_id, slot_date, slot_time))
+
+        confirmed = cur.fetchone()["total"]
+
+        # Check availability
+        if confirmed >= worker_count:
+            flash("No workers available for this slot.", "error")
+            return redirect(request.referrer)
+
+        # Confirm booking
+        cur.execute("""
+            UPDATE slot_data
+            SET booking_status='Confirmed'
+            WHERE id=%s
+        """, (slot_id,))
+
+        conn.commit()
+
+    flash("Booking confirmed successfully!", "success")
+    return redirect(request.referrer)
+
+@app.route("/reject_booking/<int:slot_id>", methods=["POST"])
+def reject_booking(slot_id):
+
+    if "username" not in session:
+        flash("Login required", "error")
+        return redirect(url_for("login_page"))
+
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+
+        cur.execute("""
+            UPDATE slot_data
+            SET booking_status='Rejected'
+            WHERE id=%s
+        """, (slot_id,))
+
+        conn.commit()
+
+    flash("Booking rejected!", "success")
+
+    return redirect(request.referrer)
+
+# check 6
 # -------------------- WORKER PASSKEY VERIFICATION PAGE (GET) -------------------- #
 @app.route("/verify_worker_page/<int:salon_id>")
 def verify_worker_page_get(salon_id):
@@ -1085,8 +1300,11 @@ def verify_worker_access_post(salon_id):
 
     entered_key = request.form.get("pass_key")
     with get_db_connection() as conn:
-        salon = conn.execute("SELECT pass_key FROM salons_data WHERE id=?",
-                             (salon_id,)).fetchone()
+        cur = conn.cursor()
+
+        cur.execute("SELECT pass_key FROM salons_data WHERE id=%s",
+                             (salon_id,))
+        salon = cur.fetchone()
 
     if not salon or not check_password_hash(salon["pass_key"], entered_key):
         flash("Wrong Passkey!", "error")
@@ -1102,10 +1320,13 @@ def verify_worker_page(salon_id):
     if request.method == "POST":
         entered_key = request.form.get("pass_key")
         with get_db_connection() as conn:
-            salon = conn.execute(
-                "SELECT pass_key FROM salons_data WHERE id=?",
+            cur = conn.cursor()
+
+            cur.execute(
+                "SELECT pass_key FROM salons_data WHERE id=%s",
                 (salon_id,)
-            ).fetchone()
+            )
+            salon = cur.fetchone()
 
         if salon and check_password_hash(salon["pass_key"], entered_key):
             session["verified_salon_id"] = salon_id
@@ -1135,8 +1356,10 @@ def update_worker_count(salon_id):
         return redirect(url_for("worker_toggle_page", salon_id=salon_id))
 
     with get_db_connection() as conn:
-        conn.execute(
-            "UPDATE salons_data SET worker_count=? WHERE id=?",
+        cur = conn.cursor()
+
+        cur.execute(
+            "UPDATE salons_data SET worker_count=%s WHERE id=%s",
             (worker_count, salon_id)
         )
         conn.commit()
@@ -1167,8 +1390,7 @@ def generate_required_slots(start_time, service_count):
 
     return slots
 
-
-
+#--------------Book SLot ---------------------#
 
 @app.route("/book-slot/<int:salon_id>", methods=["GET", "POST"])
 def book_slot_for_salon(salon_id):
@@ -1180,10 +1402,13 @@ def book_slot_for_salon(salon_id):
 
     # ---------- FETCH SALON & SERVICES ----------
     with get_db_connection() as conn:
-        salon = conn.execute(
-            "SELECT * FROM salons_data WHERE id=?",
+        cur = conn.cursor()
+
+        cur.execute(
+            "SELECT * FROM salons_data WHERE id=%s",
             (salon_id,)
-        ).fetchone()
+        )
+        salon = cur.fetchone()
 
         services = get_salon_services(conn, salon_id)
 
@@ -1212,16 +1437,8 @@ def book_slot_for_salon(salon_id):
             not selected_services or
             total_price <= 0
         ):
-            flash(
-                "Please select date, time and at least one service!",
-                "error"
-            )
-            return redirect(
-                url_for(
-                    "book_slot_for_salon",
-                    salon_id=salon_id
-                )
-            )
+            flash("Please select date, time and at least one service!", "error")
+            return redirect(url_for("book_slot_for_salon", salon_id=salon_id))
 
         # ---------- PARSE DATETIME ----------
         try:
@@ -1231,25 +1448,12 @@ def book_slot_for_salon(salon_id):
             )
         except ValueError:
             flash("Invalid date or time!", "error")
-            return redirect(
-                url_for(
-                    "book_slot_for_salon",
-                    salon_id=salon_id
-                )
-            )
+            return redirect(url_for("book_slot_for_salon", salon_id=salon_id))
 
         # ---------- PREVENT PAST BOOKINGS ----------
         if selected_start < datetime.now():
-            flash(
-                "You cannot book past time slots!",
-                "error"
-            )
-            return redirect(
-                url_for(
-                    "book_slot_for_salon",
-                    salon_id=salon_id
-                )
-            )
+            flash("You cannot book past time slots!", "error")
+            return redirect(url_for("book_slot_for_salon", salon_id=salon_id))
 
         # ---------- SLOT CALCULATION ----------
         service_count = len(selected_services)
@@ -1262,96 +1466,60 @@ def book_slot_for_salon(salon_id):
         start_time = required_slots[0]
 
         end_dt = (
-        datetime.strptime(start_time, "%H:%M")
-        + timedelta(minutes=30)
-)
+            datetime.strptime(start_time, "%H:%M")
+            + timedelta(minutes=30)
+        )
 
         end_time = end_dt.strftime("%H:%M")
 
         # ---------- CHECK SALON CLOSING TIME ----------
         if end_time > "22:00":
-            flash(
-                "Selected services exceed salon closing time (10:00 PM).",
-                "error"
-            )
-            return redirect(
-                url_for(
-                    "book_slot_for_salon",
-                    salon_id=salon_id
-                )
-            )
+            flash("Selected services exceed salon closing time (10:00 PM).", "error")
+            return redirect(url_for("book_slot_for_salon", salon_id=salon_id))
 
         # ---------- CHECK SLOT AVAILABILITY ----------
         with get_db_connection() as conn:
+            cur = conn.cursor()
 
-            rows = conn.execute("""
+            cur.execute("""
                 SELECT slot_time
                 FROM slot_data
-                WHERE salon_id = ?
-                AND slot_date = ?
+                WHERE salon_id = %s
+                AND slot_date = %s
                 AND payment_status = 'paid'
-            """, (
-                salon_id,
-                slot_date
-            )).fetchall()
+            """, (salon_id, slot_date))
+
+            rows = cur.fetchall()
 
         booked_count = {}
 
-        for row in rows:
-
-            if not row["slot_time"]:
+        for r in rows:
+            if not r["slot_time"]:
                 continue
 
-            for slot in row["slot_time"].split(","):
-                booked_count[slot] = (
-                    booked_count.get(slot, 0) + 1
-                )
+            for slot in r["slot_time"].split(","):
+                booked_count[slot] = booked_count.get(slot, 0) + 1
 
-        worker_count = max(
-            int(salon["worker_count"] or 1),
-            1
-        )
+        worker_count = max(int(salon["worker_count"] or 1), 1)
 
         for slot in required_slots:
-
             if booked_count.get(slot, 0) >= worker_count:
-                flash(
-                    f"Time slot {slot} is unavailable.",
-                    "error"
-                )
-                return redirect(
-                    url_for(
-                        "book_slot_for_salon",
-                        salon_id=salon_id
-                    )
-                )
+                flash(f"Time slot {slot} is unavailable.", "error")
+                return redirect(url_for("book_slot_for_salon", salon_id=salon_id))
 
         # ---------- SAVE TEMP BOOKING ----------
         session["pending_booking"] = {
-
             "salon_id": salon_id,
-
             "slot_date": slot_date,
-
             "slot_time": ",".join(required_slots),
-
             "start_time": start_time,
-
             "end_time": end_time,
-
             "selected_services": selected_services,
-
             "service_total": total_price,
-
             "platform_fee": service_count * 10
         }
 
-        return redirect(
-            url_for(
-                "payment",
-                salon_id=salon_id
-            )
-        )
+        return redirect(url_for("payment", salon_id=salon_id))
 
     # ---------- GET ----------
     return render_template(
@@ -1366,28 +1534,32 @@ def book_slot_for_salon(salon_id):
 def get_booked_slots(salon_id, slot_date):
 
     with get_db_connection() as conn:
-
-        salon = conn.execute("""
+        cur = conn.cursor()
+        cur.execute("""
             SELECT worker_count
             FROM salons_data
-            WHERE id = ?
-        """, (salon_id,)).fetchone()
+            WHERE id = %s
+        """, (salon_id,))
+        salon = cur.fetchone()
+
 
         worker_count = max(
             int(salon["worker_count"] or 1),
             1
         )
 
-        rows = conn.execute("""
+        cur.execute("""
             SELECT slot_time
             FROM slot_data
-            WHERE salon_id = ?
-            AND slot_date = ?
+            WHERE salon_id = %s
+            AND slot_date = %s
             AND payment_status = 'paid'
         """, (
             salon_id,
             slot_date
-        )).fetchall()
+        ))
+        rows = cur.fetchall()
+
 
     booked_slots = {}
 
@@ -1405,9 +1577,7 @@ def get_booked_slots(salon_id, slot_date):
         "bookedSlots": booked_slots,
         "workerCount": worker_count
     })
-
-
-
+#----------------Payment--------------------#
 
 @app.route("/payment/<int:salon_id>")
 def payment(salon_id):
@@ -1494,9 +1664,11 @@ def payment_success():
 
     try:
         with get_db_connection() as conn:
-
+            cur = conn.cursor()
             # ---------- INSERT BOOKING (THIS WAS MISSING) ----------
-            conn.execute("""
+       
+            cur.execute("""
+
                 INSERT INTO slot_data (
                     user_id,
                     username,
@@ -1509,6 +1681,10 @@ def payment_success():
                     total_price,
                     payment_status
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+
+                    payment_status,
+                        booking_status
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s)
             """, (
                 session["user_id"],
                 session["username"],
@@ -1520,6 +1696,8 @@ def payment_success():
                 ",".join(booking["selected_services"]),
                 booking["service_total"],
                 "paid"
+                "paid",
+                "Pending"
             ))
 
             conn.commit()
@@ -1535,26 +1713,25 @@ def payment_success():
 
     return redirect(url_for("show_salons"))
 
-print("PAYMENT SUCCESS ROUTE HIT")
 # -------------------- ADMIN DATABASE VIEW -------------------- #
-@app.route("/database_views")
-def database_views():
-    if not session.get("admin"):
-        flash("Admin access only!", "error")
-        return redirect(url_for("gender"))
+# @app.route("/database_views")
+# def database_views():
+#     if not session.get("admin"):
+#         flash("Admin access only!", "error")
+#         return redirect(url_for("gender"))
 
-    with get_db_connection() as conn:
-        users = conn.execute("SELECT * FROM users_data").fetchall()
-        salons = conn.execute("SELECT * FROM salons_data").fetchall()
-        slots = conn.execute("SELECT * FROM slot_data").fetchall()
+#     with get_db_connection() as conn:
+#         users = conn.execute("SELECT * FROM users_data").fetchall()
+#         salons = conn.execute("SELECT * FROM salons_data").fetchall()
+#         slots = conn.execute("SELECT * FROM slot_data").fetchall()
 
-    return render_template(
-        "database_views.html",
-        users=users,
-        salons=salons,
-        slots=slots,
-        username=session.get("username")
-    )
+#     return render_template(
+#         "database_views.html",
+#         users=users,
+#         salons=salons,
+#         slots=slots,
+#         username=session.get("username")
+#     )
 # -------------------- RUN APP -------------------- #
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000, debug=True)

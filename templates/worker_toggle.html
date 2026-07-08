@@ -38,7 +38,66 @@
 
     <p>Note: Updating this number will change how many workers are considered available for bookings.</p>
 
+    <hr>
+
+<h2>Pending Bookings</h2>
+
+{% if pending_bookings %}
+
+    {% for booking in pending_bookings %}
+
+    <div class="booking-card">
+
+        <p><strong>Customer:</strong> {{ booking.username }}</p>
+
+        <p><strong>Date:</strong> {{ booking.slot_date }}</p>
+
+        <p><strong>Time:</strong> {{ booking.slot_time }}</p>
+
+        <p><strong>Services:</strong> {{ booking.selected_services }}</p>
+
+        <p><strong>Total Price:</strong> ₹{{ booking.total_price }}</p>
+
+        <form action="{{ url_for('accept_booking', slot_id=booking.id) }}"
+              method="POST"
+              style="display:inline;">
+
+            <button type="submit" class="btn">
+                Accept
+            </button>
+
+        </form>
+
+        <form action="{{ url_for('reject_booking', slot_id=booking.id) }}"
+              method="POST"
+              style="display:inline;">
+
+            <button type="submit"
+                    style="background:red;color:white;padding:8px 18px;border:none;border-radius:6px;cursor:pointer;">
+
+                Reject
+
+            </button>
+
+        </form>
+
+    </div>
+
+    <hr>
+
+    {% endfor %}
+
+{% else %}
+
+<p>No Pending Bookings.</p>
+
+{% endif %}
+
+
 </div>
+
+
+
 
 <!-- Footer Section -->
     <div class="footer" id="footer">
