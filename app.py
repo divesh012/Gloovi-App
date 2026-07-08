@@ -761,7 +761,6 @@ def reset_password():
     return render_template("reset_password.html")
 
 
-
 # -------------------- SERVE UPLOADS -------------------- #
 @app.route("/uploads/<path:filename>")
 def uploaded_file(filename):
@@ -1080,25 +1079,47 @@ def worker_toggle_page(salon_id):
             "SELECT * FROM salons_data WHERE id=%s",
             (salon_id,)
         )
+
         salon = cur.fetchone()
 
         if not salon:
             flash("Salon not found!", "error")
             return redirect(url_for("show_salons"))
 
-        # Get all pending bookings for this salon
-        cur.execute("""
-            SELECT *
-            FROM slot_data
-            WHERE salon_id=%s
-              AND payment_status='paid'
-              AND booking_status='Pending'
-            ORDER BY slot_date, slot_time
-        """, (salon_id,))
+        try:
+            # Debug: Print current database
+            cur.execute("SELECT current_database();")
+            print("Current Database:", cur.fetchone())
 
-        pending_bookings = cur.fetchall()
+            # Debug: Print all columns of slot_data
+            cur.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name='slot_data'
+                ORDER BY ordinal_position;
+            """)
+            print("slot_data columns:", cur.fetchall())
 
-    # Generate workers list
+            # Get all pending bookings
+            cur.execute("""
+                SELECT *
+                FROM slot_data
+                WHERE salon_id=%s
+                  AND payment_status='paid'
+                  AND booking_status=%s
+                ORDER BY slot_date, slot_time
+            """, (
+                salon_id,
+                "paid",
+                "Pending"
+            ))
+
+            pending_bookings = cur.fetchall()
+
+        except Exception as e:
+            print("WORKER PAGE ERROR:", e)
+            raise
+
     workers = [
         {
             "id": i + 1,
