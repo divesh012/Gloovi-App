@@ -34,30 +34,17 @@ from flask import Flask
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
-# ----------------------------------------------------
-# LOAD ENVIRONMENT VARIABLES
-# ----------------------------------------------------
 load_dotenv()
 
-# ----------------------------------------------------
-# FLASK APP
-# ----------------------------------------------------
 app = Flask(__name__)
 app.secret_key = os.getenv(
     "SECRET_KEY",
     "5e7f9b2c1d4a8f0e6c9b7a1d3e5f8c2b"
 )
-
-# ----------------------------------------------------
-# ADMIN
-# ----------------------------------------------------
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 
-# ----------------------------------------------------
-# RAZORPAY
-# ----------------------------------------------------
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID")
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET")
 
@@ -71,14 +58,9 @@ razorpay_client.set_app_details(
     }
 )
 
-# ----------------------------------------------------
-# GEOAPIFY
-# ----------------------------------------------------
 GEOAPIFY_KEY = "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
 
-# ----------------------------------------------------
-# UPLOAD FOLDER
-# ----------------------------------------------------
+
 UPLOAD_FOLDER = os.path.join(app.root_path, "static", "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -92,9 +74,7 @@ ALLOWED_EXT = {
     "webp",
 }
 
-# ----------------------------------------------------
-# SQLITE BACKUP PATH (KEEP IF YOU STILL USE BACKUPS)
-# ----------------------------------------------------
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -110,7 +90,7 @@ os.makedirs(BACKUP_DIR, exist_ok=True)
 # ----------------------------------------------------
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-print("DATABASE_URL =", DATABASE_URL)
+#print("DATABASE_URL =", DATABASE_URL)
 
 def get_db_connection():
     return psycopg2.connect(
@@ -1060,8 +1040,10 @@ def toggle_verify(salon_id):
 
 
 # -------------------- WORKER PAGE -------------------- #
+
 @app.route("/salon/<int:salon_id>/workers")
 def worker_toggle_page(salon_id):
+
     if "username" not in session:
         flash("Login required", "error")
         return redirect(url_for("login_page"))
@@ -1075,10 +1057,11 @@ def worker_toggle_page(salon_id):
         cur = conn.cursor()
 
         # Get salon details
-        cur.execute(
-            "SELECT * FROM salons_data WHERE id=%s",
-            (salon_id,)
-        )
+        cur.execute("""
+            SELECT *
+            FROM salons_data
+            WHERE id=%s
+        """, (salon_id,))
 
         salon = cur.fetchone()
 
@@ -1086,40 +1069,23 @@ def worker_toggle_page(salon_id):
             flash("Salon not found!", "error")
             return redirect(url_for("show_salons"))
 
-        try:
-            # Debug: Print current database
-            cur.execute("SELECT current_database();")
-            print("Current Database:", cur.fetchone())
+        # Show only pending paid bookings
+        cur.execute("""
+            SELECT *
+            FROM slot_data
+            WHERE salon_id=%s
+              AND payment_status=%s
+              AND booking_status=%s
+            ORDER BY slot_date ASC, slot_time ASC
+        """, (
+            salon_id,
+            "paid",
+            "Pending"
+        ))
 
-            # Debug: Print all columns of slot_data
-            cur.execute("""
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_name='slot_data'
-                ORDER BY ordinal_position;
-            """)
-            print("slot_data columns:", cur.fetchall())
+        pending_bookings = cur.fetchall()
 
-            # Get all pending bookings
-            cur.execute("""
-                SELECT *
-                FROM slot_data
-                WHERE salon_id=%s
-                  AND payment_status='paid'
-                  AND booking_status=%s
-                ORDER BY slot_date, slot_time
-            """, (
-                salon_id,
-                "paid",
-                "Pending"
-            ))
-
-            pending_bookings = cur.fetchall()
-
-        except Exception as e:
-            print("WORKER PAGE ERROR:", e)
-            raise
-
+    # Generate workers list
     workers = [
         {
             "id": i + 1,
@@ -1134,8 +1100,7 @@ def worker_toggle_page(salon_id):
         workers=workers,
         pending_bookings=pending_bookings
     )
-
-
+# -------------------- ACCEPT BOOKING -------------------- #
 @app.route("/accept_booking/<int:slot_id>", methods=["POST"])
 def accept_booking(slot_id):
 
@@ -1146,7 +1111,6 @@ def accept_booking(slot_id):
     with get_db_connection() as conn:
         cur = conn.cursor()
 
-        # Get booking details
         cur.execute("""
             SELECT salon_id, slot_date, slot_time
             FROM slot_data
@@ -1163,7 +1127,6 @@ def accept_booking(slot_id):
         slot_date = booking["slot_date"]
         slot_time = booking["slot_time"]
 
-        # Get available workers
         cur.execute("""
             SELECT worker_count
             FROM salons_data
@@ -1174,35 +1137,42 @@ def accept_booking(slot_id):
 
         worker_count = salon["worker_count"]
 
-        # Count confirmed bookings for the SAME date & time
         cur.execute("""
             SELECT COUNT(*) AS total
             FROM slot_data
             WHERE salon_id=%s
               AND slot_date=%s
               AND slot_time=%s
-              AND booking_status='Confirmed'
-        """, (salon_id, slot_date, slot_time))
+              AND booking_status=%s
+        """, (
+            salon_id,
+            slot_date,
+            slot_time,
+            "Confirmed"
+        ))
 
         confirmed = cur.fetchone()["total"]
 
-        # Check availability
         if confirmed >= worker_count:
             flash("No workers available for this slot.", "error")
             return redirect(request.referrer)
 
-        # Confirm booking
         cur.execute("""
             UPDATE slot_data
-            SET booking_status='Confirmed'
+            SET booking_status=%s
             WHERE id=%s
-        """, (slot_id,))
+        """, (
+            "Confirmed",
+            slot_id
+        ))
 
         conn.commit()
 
     flash("Booking confirmed successfully!", "success")
     return redirect(request.referrer)
 
+
+# -------------------- REJECT BOOKING -------------------- #
 @app.route("/reject_booking/<int:slot_id>", methods=["POST"])
 def reject_booking(slot_id):
 
@@ -1215,14 +1185,16 @@ def reject_booking(slot_id):
 
         cur.execute("""
             UPDATE slot_data
-            SET booking_status='Rejected'
+            SET booking_status=%s
             WHERE id=%s
-        """, (slot_id,))
+        """, (
+            "Rejected",
+            slot_id
+        ))
 
         conn.commit()
 
     flash("Booking rejected!", "success")
-
     return redirect(request.referrer)
 
 # check 6
@@ -1588,7 +1560,7 @@ def payment_success():
         flash("Payment failed!", "error")
         return redirect(url_for("show_salons"))
 
-    # ---------- VERIFY ----------
+    # ---------- VERIFY PAYMENT ----------
     try:
         razorpay_client.utility.verify_payment_signature({
             "razorpay_order_id": order_id,
@@ -1609,10 +1581,8 @@ def payment_success():
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
-            # ---------- INSERT BOOKING (THIS WAS MISSING) ----------
-       
-            cur.execute("""
 
+            cur.execute("""
                 INSERT INTO slot_data (
                     user_id,
                     username,
@@ -1623,12 +1593,13 @@ def payment_success():
                     end_time,
                     selected_services,
                     total_price,
-                    payment_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-
                     payment_status,
-                        booking_status
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s)
+                    booking_status
+                )
+                VALUES (
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s
+                )
             """, (
                 session["user_id"],
                 session["username"],
@@ -1639,14 +1610,12 @@ def payment_success():
                 booking["end_time"],
                 ",".join(booking["selected_services"]),
                 booking["service_total"],
-                "paid"
                 "paid",
                 "Pending"
             ))
 
             conn.commit()
 
-        # clear session
         session.pop("pending_booking", None)
 
         flash("Payment successful! Slot booked.", "success")
