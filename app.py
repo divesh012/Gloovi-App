@@ -22,92 +22,94 @@ from flask import (
     flash,
     send_from_directory,
 )
+import os
+import shutil
+from datetime import datetime, date
+
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import razorpay
+from dotenv import load_dotenv
+from flask import Flask
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-import razorpay
 
-# -------------------- FLASK APP -------------------- #
-app = Flask(__name__)
-app.secret_key = "your_secret_key"
-
-# ADMIN_USERNAME = "#"
-
-# ADMIN_EMAIL="#"
-# ADMIN_PASSWORD="#"
-
-from dotenv import load_dotenv
-import os
-
+# ----------------------------------------------------
+# LOAD ENVIRONMENT VARIABLES
+# ----------------------------------------------------
 load_dotenv()
 
+# ----------------------------------------------------
+# FLASK APP
+# ----------------------------------------------------
+app = Flask(__name__)
+app.secret_key = os.getenv(
+    "SECRET_KEY",
+    "5e7f9b2c1d4a8f0e6c9b7a1d3e5f8c2b"
+)
+
+# ----------------------------------------------------
+# ADMIN
+# ----------------------------------------------------
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 
+# ----------------------------------------------------
+# RAZORPAY
+# ----------------------------------------------------
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID")
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET")
 
+razorpay_client = razorpay.Client(
+    auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET)
+)
+razorpay_client.set_app_details(
+    {
+        "title": "Gloora Salon Booking",
+        "version": "1.0",
+    }
+)
 
-# print("ENV EMAIL:", ADMIN_EMAIL)
-# print("ENV EMAIL:", ADMIN_USERNAME)
-# print("RAZORPAY KEY:", RAZORPAY_KEY_ID)
-# -------------------- RAZORPAY -------------------- #
-
-#RAZORPAY_KEY_ID = "rzp_test_RKFRNhf7xcHQgR"
-#RAZORPAY_KEY_SECRET = "hRgiFkFXxAFA2fACRGnmwo1F"
-
-#razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
-import razorpay
-
-# RAZORPAY_KEY_ID = "#"
-# RAZORPAY_KEY_SECRET = "#"
-
-#RAZORPAY_KEY_ID = "#"
-#RAZORPAY_KEY_SECRET = "#"
-
-razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
-razorpay_client.set_app_details({"title": "Gloora Salon Booking", "version": "1.0"})
-
-# -------------------- GEOAPIFY -------------------- #
+# ----------------------------------------------------
+# GEOAPIFY
+# ----------------------------------------------------
 GEOAPIFY_KEY = "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
 
-# -------------------- UPLOAD FOLDER -------------------- #
+# ----------------------------------------------------
+# UPLOAD FOLDER
+# ----------------------------------------------------
 UPLOAD_FOLDER = os.path.join(app.root_path, "static", "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-ALLOWED_EXT = {"png", "jpg", "jpeg", "gif", "webp"}
 
-import os
-import sqlite3
-import shutil
-from datetime import datetime
+ALLOWED_EXT = {
+    "png",
+    "jpg",
+    "jpeg",
+    "gif",
+    "webp",
+}
 
-# -------------------- DATABASE PATH -------------------- #
+# ----------------------------------------------------
+# SQLITE BACKUP PATH (KEEP IF YOU STILL USE BACKUPS)
+# ----------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
+
 DB_PATH = os.path.join(DATA_DIR, "database.db")
 
-# -------------------- BACKUP PATH -------------------- #
 BACKUP_DIR = os.path.join(BASE_DIR, "backup")
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
-# -------------------- DATABASE CONNECTION -------------------- #
-# def get_db_connection():
-#     conn = sqlite3.connect(DB_PATH)
-#     conn.row_factory = sqlite3.Row
-#     conn.execute("PRAGMA foreign_keys = ON;")
-#     return conn
-
-#------------USED PG ADMIN----------#
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-
+# ----------------------------------------------------
+# POSTGRESQL
+# ----------------------------------------------------
 DATABASE_URL = os.getenv("DATABASE_URL")
+
 print("DATABASE_URL =", DATABASE_URL)
 
 def get_db_connection():
@@ -115,99 +117,13 @@ def get_db_connection():
         DATABASE_URL,
         cursor_factory=RealDictCursor
     )
+
 try:
     conn = get_db_connection()
     print("✅ PostgreSQL Connected")
     conn.close()
 except Exception as e:
     print("❌ PostgreSQL Error:", e)
-
-
-# -------------------- BACKUP FUNCTIONS -------------------- #
-def backup_database():
-    """Create a timestamped backup of the database."""
-    if not os.path.exists(DB_PATH):
-        print("No database to backup.")
-        return
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_file = os.path.join(BACKUP_DIR, f"database_backup_{timestamp}.db")
-    shutil.copy2(DB_PATH, backup_file)
-    print(f"✔ Database backed up to {backup_file}")
-
-def cleanup_old_backups(max_backups=5):
-    """Keep only the last N backups."""
-    backups = sorted(os.listdir(BACKUP_DIR))
-    while len(backups) > max_backups:
-        old_backup = backups.pop(0)
-        os.remove(os.path.join(BACKUP_DIR, old_backup))
-        print(f"Deleted old backup: {old_backup}")
-
-# -------------------- SMS HELPER -------------------- #
-FAST2SMS_API_KEY = "vDAdOoqmEaF9B6MC2e0frtGiybSHsKRjpU13zunWcXY8lIT4hZ8XqxLzwjOstlEnVpW5k3gIPrYDvSKF"  # replace later
-
-def send_sms(mobile, message):
-    url = "https://www.fast2sms.com/dev/bulkV2"
-    headers = {
-        "authorization": FAST2SMS_API_KEY,
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "route": "q",           # QUICK route (no DLT, works for testing)
-        "numbers": str(mobile),
-        "message": message
-    }
-
-    response = requests.post(url, json=payload, headers=headers)
-    result = response.json()
-
-    print("📩 FAST2SMS RESPONSE:", result)   # 👈 VERY IMPORTANT
-
-    return result
-
-
-#This is salon On off by default offf 
-
-from datetime import date
-
-def reset_salons_daily():
-    today = str(date.today())
-
-    with get_db_connection() as conn:
-        cur = conn.cursor()
-
-        # Get last reset date
-        cur.execute(
-            "SELECT value FROM app_settings WHERE key=%s",
-            ("last_reset_date",)
-        )
-        row = cur.fetchone()
-
-        last_reset = row["value"] if row else ""
-
-        # Reset only once per day
-        if last_reset != today:
-
-            cur.execute("UPDATE salons_data SET status='OFF'")
-
-            cur.execute(
-                "UPDATE app_settings SET value=%s WHERE key=%s",
-                (today, "last_reset_date")
-            )
-
-            conn.commit()
-# -------------------- INITIALIZE TABLES -------------------- #
-
-import psycopg2
-from psycopg2.extras import RealDictCursor
-
-# -------------------- CONNECTION -------------------- #
-def get_db_connection():
-    return psycopg2.connect(
-        DATABASE_URL,
-        cursor_factory=RealDictCursor
-    )
-
 # -------------------- INIT DATABASE -------------------- #
 def init_all_databases():
     try:
@@ -225,7 +141,7 @@ def init_all_databases():
             mobile TEXT UNIQUE,
             password TEXT NOT NULL,
             gender TEXT NOT NULL
-        )
+        );
         """)
 
         # SALONS
@@ -249,7 +165,7 @@ def init_all_databases():
             rating_count INTEGER DEFAULT 0,
             image TEXT,
             worker_count INTEGER DEFAULT 1
-        )
+        );
         """)
 
         # SERVICES
@@ -257,19 +173,17 @@ def init_all_databases():
         CREATE TABLE IF NOT EXISTS services (
             id SERIAL PRIMARY KEY,
             service_name TEXT UNIQUE NOT NULL
-        )
+        );
         """)
 
         # SALON SERVICES
         cur.execute("""
         CREATE TABLE IF NOT EXISTS salon_services (
             id SERIAL PRIMARY KEY,
-            salon_id INTEGER,
-            service_id INTEGER,
-            price DOUBLE PRECISION,
-            FOREIGN KEY (salon_id) REFERENCES salons_data(id) ON DELETE CASCADE,
-            FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE
-        )
+            salon_id INTEGER REFERENCES salons_data(id) ON DELETE CASCADE,
+            service_id INTEGER REFERENCES services(id) ON DELETE CASCADE,
+            price DOUBLE PRECISION
+        );
         """)
 
         # SLOT REMINDERS
@@ -281,41 +195,45 @@ def init_all_databases():
             slot_datetime TEXT NOT NULL,
             reminder_time TEXT NOT NULL,
             sent INTEGER DEFAULT 0
-        )
+        );
         """)
 
         # SLOT DATA
         cur.execute("""
         CREATE TABLE IF NOT EXISTS slot_data (
             id SERIAL PRIMARY KEY,
-            user_id INTEGER,
+            user_id INTEGER REFERENCES users_data(id) ON DELETE CASCADE,
             username TEXT,
-            salon_id INTEGER,
-            service_id INTEGER,
+            salon_id INTEGER REFERENCES salons_data(id) ON DELETE CASCADE,
+            service_id INTEGER REFERENCES services(id) ON DELETE CASCADE,
             slot_date TEXT,
             slot_time TEXT,
             start_time TEXT,
             end_time TEXT,
             selected_services TEXT DEFAULT '',
             total_price DOUBLE PRECISION DEFAULT 0,
-            payment_status TEXT DEFAULT 'pending',
-            FOREIGN KEY (user_id) REFERENCES users_data(id) ON DELETE CASCADE,
-            FOREIGN KEY (salon_id) REFERENCES salons_data(id) ON DELETE CASCADE,
-            FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE
-        )
+            payment_status TEXT DEFAULT 'pending'
+        );
         """)
 
         conn.commit()
-        cur.close()
-        conn.close()
 
         print("✅ ALL POSTGRESQL TABLES CREATED SUCCESSFULLY")
 
     except Exception as e:
         print("❌ DATABASE INIT ERROR:", e)
+        raise
 
-# with app.app_context():
-#     init_all_databases()
+    finally:
+        cur.close()
+        conn.close()
+
+
+# -------------------------------------------------------
+# CREATE TABLES WHEN APP STARTS
+# -------------------------------------------------------
+init_all_databases()
+
 # -------------------- HELPERS -------------------- #
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXT
