@@ -126,6 +126,9 @@ except Exception as e:
     print("❌ PostgreSQL Error:", e)
 # -------------------- INIT DATABASE -------------------- #
 def init_all_databases():
+    conn = None
+    cur = None
+
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -217,7 +220,6 @@ def init_all_databases():
         """)
 
         conn.commit()
-
         print("✅ ALL POSTGRESQL TABLES CREATED SUCCESSFULLY")
 
     except Exception as e:
@@ -225,14 +227,17 @@ def init_all_databases():
         raise
 
     finally:
-        cur.close()
-        conn.close()
+        if cur is not None:
+            cur.close()
+
+        if conn is not None:
+            conn.close()
 
 
 # -------------------------------------------------------
 # CREATE TABLES WHEN APP STARTS
 # -------------------------------------------------------
-init_all_databases()
+#init_all_databases()
 
 # -------------------- HELPERS -------------------- #
 def allowed_file(filename):
