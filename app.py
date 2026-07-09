@@ -1075,10 +1075,8 @@ def toggle_verify(salon_id):
         conn.commit()
 
     flash(f"Salon is now {new_status}.", "success")
-    flash("Incorrect Passkey!", "error")
-    return redirect(url_for("show_salons"))
 
-# -------------------- WORKER PAGE -------------------- #
+    return redirect(url_for("show_salons"))
 
 # -------------------- WORKER PAGE -------------------- #
 @app.route("/salon/<int:salon_id>/workers")
@@ -1172,19 +1170,22 @@ def verify_worker_page_get(salon_id):
 # -------------------- WORKER PASSKEY SUBMIT (POST) -------------------- #
 @app.route("/verify_worker_access/<int:salon_id>", methods=["POST"])
 def verify_worker_access_post(salon_id):
-    if session.get("verified_worker_salon_id") == salon_id:
-        return redirect(url_for("worker_toggle_page", salon_id=salon_id))
 
-    entered_key = request.form.get("pass_key")
+    # Remove any previous verification
+    session.pop("verified_worker_salon_id", None)
+
+    entered_key = request.form.get("pass_key", "").strip()
+
     with get_db_connection() as conn:
         cur = conn.cursor()
-
-        cur.execute("SELECT pass_key FROM salons_data WHERE id=%s",
-                             (salon_id,))
+        cur.execute(
+            "SELECT pass_key FROM salons_data WHERE id=%s",
+            (salon_id,)
+        )
         salon = cur.fetchone()
 
     if not salon or not check_password_hash(salon["pass_key"], entered_key):
-        flash("Wrong Passkey!", "error")
+        flash("Incorrect Passkey!", "error")
         return redirect(url_for("show_salons"))
 
     session["verified_worker_salon_id"] = salon_id
