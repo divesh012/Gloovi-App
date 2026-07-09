@@ -999,6 +999,20 @@ def rate_salon(salon_id):
     flash("Thank you for rating!", "success")
     return redirect(url_for("show_salons"))
 # -------------------- SALON TOGGLE -------------------- #
+from datetime import date
+
+# from apscheduler.schedulers.background import BackgroundScheduler
+
+# def reset_status():
+#     with get_db_connection() as conn:
+#         cur = conn.cursor()
+#         cur.execute("UPDATE salons_data SET status='OFF'")
+#         conn.commit()
+
+# scheduler = BackgroundScheduler()
+# scheduler.add_job(reset_status, 'cron', hour=0, minute=0)
+# scheduler.start()
+
 @app.route("/toggle_verify/<int:salon_id>", methods=["POST"])
 def toggle_verify(salon_id):
 
@@ -1008,13 +1022,16 @@ def toggle_verify(salon_id):
         flash("Please enter the passkey.", "error")
         return redirect(url_for("show_salons"))
 
+    today = date.today()
+
     with get_db_connection() as conn:
         cur = conn.cursor()
 
-        cur.execute(
-            "SELECT pass_key, status FROM salons_data WHERE id=%s",
-            (salon_id,)
-        )
+        cur.execute("""
+            SELECT pass_key, status, last_updated_date
+            FROM salons_data
+            WHERE id=%s
+        """, (salon_id,))
 
         salon = cur.fetchone()
 
@@ -1022,26 +1039,36 @@ def toggle_verify(salon_id):
             flash("Salon not found!", "error")
             return redirect(url_for("show_salons"))
 
+        # If it's a new day, reset status to OFF
+        if salon["last_updated_date"] != today:
+            cur.execute("""
+                UPDATE salons_data
+                SET status='OFF', last_updated_date=%s
+                WHERE id=%s
+            """, (today, salon_id))
+            conn.commit()
+
+            salon["status"] = "OFF"
+
         if not check_password_hash(salon["pass_key"], entered_key):
             flash("Wrong Passkey!", "error")
             return redirect(url_for("show_salons"))
 
         new_status = "OFF" if salon["status"] == "ON" else "ON"
 
-        cur.execute(
-            "UPDATE salons_data SET status=%s WHERE id=%s",
-            (new_status, salon_id)
-        )
+        cur.execute("""
+            UPDATE salons_data
+            SET status=%s, last_updated_date=%s
+            WHERE id=%s
+        """, (new_status, today, salon_id))
 
         conn.commit()
 
     flash(f"Salon turned {new_status}", "success")
     return redirect(url_for("show_salons"))
 
-
 # -------------------- WORKER PAGE -------------------- #
 
-# -------------------- WORKER PAGE -------------------- #
 @app.route("/salon/<int:salon_id>/workers")
 def worker_toggle_page(salon_id):
 
