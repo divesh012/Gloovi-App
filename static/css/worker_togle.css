@@ -83,6 +83,70 @@
             transform: translateY(-2px);
         }
 
+
+
+        .worker-box{
+    background:#fff;
+    padding:20px;
+    border-radius:12px;
+    box-shadow:0 4px 12px rgba(0,0,0,.08);
+    margin-bottom:25px;
+}
+
+.section-title{
+    margin:25px 0 15px;
+    color:#222;
+}
+
+.booking-card{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    background:#fff;
+    padding:20px;
+    margin-bottom:20px;
+    border-radius:12px;
+    box-shadow:0 4px 12px rgba(0,0,0,.08);
+}
+
+.booking-info p{
+    margin:6px 0;
+}
+
+.booking-actions{
+    display:flex;
+    gap:12px;
+}
+
+.empty-box{
+    background:#f5f5f5;
+    padding:20px;
+    text-align:center;
+    border-radius:10px;
+    color:#666;
+    font-weight:600;
+}
+
+.note{
+    color:#666;
+    margin-top:10px;
+}
+
+.btn{
+    background:#007bff;
+    color:#fff;
+    padding:10px 20px;
+    border:none;
+    border-radius:8px;
+    cursor:pointer;
+}
+
+.btn:hover{
+    background:#0056b3;
+}
+
+
+
         /* Form styling */
         form label {
             display: block;

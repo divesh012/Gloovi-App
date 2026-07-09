@@ -766,7 +766,7 @@ def register_salon():
 
         image_file = request.files.get("image")
 
-        # SERVICES
+        # Services
         service_names = request.form.getlist("service_name[]")
         service_prices = request.form.getlist("service_price[]")
 
@@ -786,7 +786,7 @@ def register_salon():
 
             valid_services.append((s_name, price_val))
 
-        # VALIDATION
+        # Validation
         if not all([salon_name, city, state, contact, pass_key]):
             flash("All fields marked with * are mandatory!", "error")
             return render_template("register_salon.html")
@@ -801,12 +801,29 @@ def register_salon():
         with get_db_connection() as conn:
             cur = conn.cursor()
 
-            # INSERT SALON
+            # Register salon (default OFF)
             cur.execute("""
                 INSERT INTO salons_data
-                (salon_name, owner_username, owner_id, email, contact,
-                 address, city, state, image, pass_key, worker_count)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                (
+                    salon_name,
+                    owner_username,
+                    owner_id,
+                    email,
+                    contact,
+                    address,
+                    city,
+                    state,
+                    image,
+                    pass_key,
+                    worker_count,
+                    status
+                )
+                VALUES
+                (
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s
+                )
                 RETURNING id
             """, (
                 salon_name,
@@ -819,12 +836,13 @@ def register_salon():
                 state,
                 image_path,
                 hashed_pass_key,
-                worker_count
+                worker_count,
+                "OFF"          # Default status
             ))
 
             salon_id = cur.fetchone()["id"]
 
-            # INSERT SERVICES
+            # Insert services
             for s_name, price_val in valid_services:
 
                 cur.execute(
@@ -841,14 +859,17 @@ def register_salon():
                         VALUES (%s)
                         RETURNING id
                     """, (s_name,))
-
                     service_id = cur.fetchone()["id"]
 
-                # MAP TABLE
                 cur.execute("""
-                    INSERT INTO salon_services (salon_id, service_id, price)
+                    INSERT INTO salon_services
+                    (salon_id, service_id, price)
                     VALUES (%s, %s, %s)
-                """, (salon_id, service_id, price_val))
+                """, (
+                    salon_id,
+                    service_id,
+                    price_val
+                ))
 
             conn.commit()
 
@@ -999,36 +1020,31 @@ def rate_salon(salon_id):
     flash("Thank you for rating!", "success")
     return redirect(url_for("show_salons"))
 # -------------------- SALON TOGGLE -------------------- #
-from datetime import date
 
-# from apscheduler.schedulers.background import BackgroundScheduler
+def reset_all_salons():
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE salons_data
+            SET status = 'OFF'
+        """)
+        conn.commit()
 
-# def reset_status():
-#     with get_db_connection() as conn:
-#         cur = conn.cursor()
-#         cur.execute("UPDATE salons_data SET status='OFF'")
-#         conn.commit()
-
-# scheduler = BackgroundScheduler()
-# scheduler.add_job(reset_status, 'cron', hour=0, minute=0)
-# scheduler.start()
 
 @app.route("/toggle_verify/<int:salon_id>", methods=["POST"])
 def toggle_verify(salon_id):
 
-    entered_key = request.form.get("pass_key")
+    entered_key = request.form.get("pass_key", "").strip()
 
     if not entered_key:
         flash("Please enter the passkey.", "error")
         return redirect(url_for("show_salons"))
 
-    today = date.today()
-
     with get_db_connection() as conn:
         cur = conn.cursor()
 
         cur.execute("""
-            SELECT pass_key, status, last_updated_date
+            SELECT pass_key, status
             FROM salons_data
             WHERE id=%s
         """, (salon_id,))
@@ -1039,36 +1055,32 @@ def toggle_verify(salon_id):
             flash("Salon not found!", "error")
             return redirect(url_for("show_salons"))
 
-        # If it's a new day, reset status to OFF
-        if salon["last_updated_date"] != today:
-            cur.execute("""
-                UPDATE salons_data
-                SET status='OFF', last_updated_date=%s
-                WHERE id=%s
-            """, (today, salon_id))
-            conn.commit()
-
-            salon["status"] = "OFF"
-
         if not check_password_hash(salon["pass_key"], entered_key):
             flash("Wrong Passkey!", "error")
             return redirect(url_for("show_salons"))
 
-        new_status = "OFF" if salon["status"] == "ON" else "ON"
+        current_status = salon["status"] or "OFF"
+
+        if current_status == "OFF":
+            new_status = "ON"
+        else:
+            new_status = "OFF"
 
         cur.execute("""
             UPDATE salons_data
-            SET status=%s, last_updated_date=%s
+            SET status=%s
             WHERE id=%s
-        """, (new_status, today, salon_id))
+        """, (new_status, salon_id))
 
         conn.commit()
 
-    flash(f"Salon turned {new_status}", "success")
+    flash(f"Salon is now {new_status}.", "success")
+    flash("Incorrect Passkey!", "error")
     return redirect(url_for("show_salons"))
 
 # -------------------- WORKER PAGE -------------------- #
 
+# -------------------- WORKER PAGE -------------------- #
 @app.route("/salon/<int:salon_id>/workers")
 def worker_toggle_page(salon_id):
 

@@ -21,117 +21,160 @@
 <div class="wrap">
 
     <div class="header-row">
-        <h2>Manage Workers for {{ salon.salon_name }}</h2>
-        <a href="{{ url_for('show_salons') }}" class="btn-show-salons">Show Salons</a>
+        <h2>Manage Workers - {{ salon.salon_name }}</h2>
+
+        <a href="{{ url_for('show_salons') }}" class="btn-show-salons">
+            ← Show Salons
+        </a>
     </div>
 
-    <form method="POST" action="{{ url_for('update_worker_count', salon_id=salon.id) }}">
-        <label for="worker_count">Available Workers</label>
-        <input type="number"
-               id="worker_count"
-               name="worker_count"
-               min="1"
-               value="{{ salon.worker_count if salon.worker_count > 0 else 1 }}"
-               required>
-        <button type="submit" class="btn">Update</button>
-    </form>
+    <!-- Worker Count -->
+    <div class="worker-box">
 
-    <p>Note: Updating this number will change how many workers are considered available for bookings.</p>
+        <form method="POST"
+              action="{{ url_for('update_worker_count', salon_id=salon.id) }}">
 
-    <hr>
+            <label for="worker_count">
+                Available Workers
+            </label>
 
-<h2>Pending Bookings</h2>
-
-{% if pending_bookings %}
-
-    {% for booking in pending_bookings %}
-
-    <div class="booking-card">
-
-        <p><strong>Customer:</strong> {{ booking.username }}</p>
-
-        <p><strong>Date:</strong> {{ booking.slot_date }}</p>
-
-        <p><strong>Time:</strong> {{ booking.slot_time }}</p>
-
-        <p><strong>Services:</strong> {{ booking.selected_services }}</p>
-
-        <p><strong>Total Price:</strong> ₹{{ booking.total_price }}</p>
-
-        <form action="{{ url_for('accept_booking', slot_id=booking.id) }}"
-              method="POST"
-              style="display:inline;">
+            <input
+                type="number"
+                id="worker_count"
+                name="worker_count"
+                min="1"
+                value="{{ salon.worker_count if salon.worker_count > 0 else 1 }}"
+                required>
 
             <button type="submit" class="btn">
-                Accept
+                Update Workers
             </button>
 
         </form>
 
-        <form action="{{ url_for('reject_booking', slot_id=booking.id) }}"
-              method="POST"
-              style="display:inline;">
-
-            <button type="submit"
-                    style="background:red;color:white;padding:8px 18px;border:none;border-radius:6px;cursor:pointer;">
-
-                Reject
-
-            </button>
-
-        </form>
+        <p class="note">
+            Updating this value changes the number of workers available for booking.
+        </p>
 
     </div>
 
     <hr>
 
-    {% endfor %}
+    <!-- Pending Bookings -->
 
-{% else %}
+    <h2 class="section-title">
+        Pending Bookings
+    </h2>
 
-<p>No Pending Bookings.</p>
+    {% if pending_bookings %}
 
-<hr>
+        {% for booking in pending_bookings %}
 
-<h2>Accepted Bookings</h2>
+        <div class="booking-card">
 
-{% if confirmed_bookings %}
+            <div class="booking-info">
 
-    {% for booking in confirmed_bookings %}
+                <p><strong>Customer :</strong> {{ booking.username }}</p>
 
-    <div class="booking-card">
+                <p><strong>Date :</strong> {{ booking.slot_date }}</p>
 
-        <p><strong>Customer:</strong> {{ booking.username }}</p>
+                <p><strong>Time :</strong> {{ booking.slot_time }}</p>
 
-        <p><strong>Date:</strong> {{ booking.slot_date }}</p>
+                <p><strong>Services :</strong> {{ booking.selected_services }}</p>
 
-        <p><strong>Time:</strong> {{ booking.slot_time }}</p>
+                <p><strong>Total :</strong> ₹{{ booking.total_price }}</p>
 
-        <p><strong>Services:</strong> {{ booking.selected_services }}</p>
+            </div>
 
-        <p><strong>Total Price:</strong> ₹{{ booking.total_price }}</p>
+            <div class="booking-actions">
 
-        <button
-            style="background:green;color:white;padding:8px 18px;border:none;border-radius:6px;">
-            Confirmed
-        </button>
+                <form action="{{ url_for('accept_booking', slot_id=booking.id) }}"
+                      method="POST">
 
-    </div>
+                    <button class="btn">
+                        ✓ Accept
+                    </button>
+
+                </form>
+
+                <form action="{{ url_for('reject_booking', slot_id=booking.id) }}"
+                      method="POST">
+
+                    <button
+                        style="background:#e53935;color:white;padding:10px 20px;border:none;border-radius:8px;cursor:pointer;">
+
+                        ✕ Reject
+
+                    </button>
+
+                </form>
+
+            </div>
+
+        </div>
+
+        {% endfor %}
+
+    {% else %}
+
+        <div class="empty-box">
+            No Pending Bookings
+        </div>
+
+    {% endif %}
 
     <hr>
 
-    {% endfor %}
+    <!-- Confirmed Bookings -->
 
-{% else %}
+    <h2 class="section-title">
+        Accepted Bookings
+    </h2>
 
-<p>No Accepted Bookings.</p>
+    {% if confirmed_bookings %}
 
-{% endif %}
+        {% for booking in confirmed_bookings %}
+
+        <div class="booking-card">
+
+            <div class="booking-info">
+
+                <p><strong>Customer :</strong> {{ booking.username }}</p>
+
+                <p><strong>Date :</strong> {{ booking.slot_date }}</p>
+
+                <p><strong>Time :</strong> {{ booking.slot_time }}</p>
+
+                <p><strong>Services :</strong> {{ booking.selected_services }}</p>
+
+                <p><strong>Total :</strong> ₹{{ booking.total_price }}</p>
+
+            </div>
+
+            <div class="booking-actions">
+
+                <button
+                    style="background:#28a745;color:white;padding:10px 20px;border:none;border-radius:8px;">
+
+                    ✓ Confirmed
+
+                </button>
+
+            </div>
+
+        </div>
+
+        {% endfor %}
+
+    {% else %}
+
+        <div class="empty-box">
+            No Accepted Bookings
+        </div>
+
+    {% endif %}
 
 </div>
-
-
-
 
 <!-- Footer Section -->
     <div class="footer" id="footer">

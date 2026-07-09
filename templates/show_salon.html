@@ -180,6 +180,21 @@
   });
 </script>
 
+<!-- Flash Alert -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        <script>
+            {% for category, message in messages %}
+                {% if category == "error" %}
+                    alert("{{ message }}");
+                {% endif %}
+            {% endfor %}
+        </script>
+    {% endif %}
+{% endwith %}
+
+
+
 <!-- Footer Section -->
 <div class="footer" id="footer">
   <div class="footer-top">
