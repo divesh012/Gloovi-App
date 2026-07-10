@@ -1021,18 +1021,38 @@ def rate_salon(salon_id):
     return redirect(url_for("show_salons"))
 # -------------------- SALON TOGGLE -------------------- #
 
+from datetime import date
+from psycopg2.extras import RealDictCursor
+
 def reset_all_salons():
+    today = date.today()
+
     with get_db_connection() as conn:
-        cur = conn.cursor()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Check whether salons have already been reset today
         cur.execute("""
-            UPDATE salons_data
-            SET status = 'OFF'
+            SELECT last_reset_date
+            FROM salons_data
+            LIMIT 1
         """)
-        conn.commit()
+        row = cur.fetchone()
+
+        if row["last_reset_date"] != today:
+
+            cur.execute("""
+                UPDATE salons_data
+                SET status = 'OFF',
+                    last_reset_date = %s
+            """, (today,))
+
+            conn.commit()
 
 
 @app.route("/toggle_verify/<int:salon_id>", methods=["POST"])
 def toggle_verify(salon_id):
+
+    reset_all_salons()
 
     entered_key = request.form.get("pass_key", "").strip()
 
